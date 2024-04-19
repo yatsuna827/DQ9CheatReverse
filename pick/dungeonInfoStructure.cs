@@ -13,9 +13,9 @@
   //  9, 10, 11, 12: 宝箱のランク(つまり1フロア当たり最大で4個？)
   // 13, 15, 17, 19: 宝箱のx座標
   // 14, 16, 18, 20: 宝箱のy座標
-  // 21: 1で初期化され、routineFの中でインクリメントされる, 最大15
-  // 22: 0で初期化され、routineFの中でインクリメントされる, 最大14?
-  // 23: 謎。
+  // 21: StructAが生成された数（生成中はカウンタとしても使用）
+  // 22: StructBが生成された数（生成中はカウンタとしても使用）
+  // 23: StructCが生成された数（生成中はカウンタとしても使用）
 
   // Struct_A
   // 24 ~ 215 ... 謎だけど12byte * 16
@@ -27,7 +27,7 @@
   // +5: routineEを実行してあったら立つフラグ
   // +6: 未使用？
   // +7: 未使用？
-  // +8 ~ +11: Struct_B型のポインタ
+  // +8 ~ +11: Struct_C型のポインタ
 
   // Struct_B
   // 216 ~ 471 ... 謎だけど16byte * 16
@@ -71,7 +71,20 @@
   // 7: 床
   // 8: 床
 
+class FloorData
+{
 
+  public int aIndex = 0;
+  public int bIndex = 0;
+
+  public int routineFIndex = 0;
+
+  public byte[,] FloorMap = new byte[16,16];
+
+  public StructA[] structAs = new StructA[16];
+  public StructB[] structBs = new StructB[16];
+  public StructC[] structCs = new StructC[16];
+}
 
 class StructA
 {

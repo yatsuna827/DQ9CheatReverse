@@ -10,33 +10,31 @@ var buffer = TreasureMapDetailData._dungeonInfo[floor];
 // 分割する線は道になる？
 
 // 最初はaddr = 24で呼ばれる
-private void routineF(StructA structA)
+private void routineF(StructA current, int index)
 {
 	if (_buffer[21] >= 15) return;
 
-	// どちらも詳細がまるで不明
-	// [21] = 1,  [22] = 0で初期化されている
-	var addrRight =  24 + (uint)(_buffer[21] * 12); // 『右のマス』のデータのポインタ
-	var addrDown  = 216 + (uint)(_buffer[22] * 16); // 『下のマス』のデータのポインタ
+	StructA next = structAs[index + 1];
+	StructB strB = structBs[index];
 
 	// addrに対してroutineEが実行済みならroutineAを見る
 	if (structA.FlagRoutineE)
 	{
-		var hasSeen = routineA(structA, addrRight, addrDown) == false;
+		var hasSeen = routineA(structA, next, strB) == false;
 		if (hasSeen) return;
 	}
 	// addrに対してroutineAが実行済みならroutineEを見る
 	else if (structA.FlagRoutineA)
 	{
-		var hasSeen = routineE(structA, addrRight, addrDown) == false;
+		var hasSeen = routineE(structA, next, strB) == false;
 		if (hasSeen) return;
 	}
 	// 両方未実行ならランダムに選ぶ
 	else 
 	{
-		var result = (this.GenerateRandom() & 1U) == 0U
-			? routineA(structA, addrRight, addrDown)
-			: routineE(structA, addrRight, addrDown);
+		var result = (this.GetRand() & 1U) == 0U
+			? routineA(structA, next, strB)
+			: routineE(structA, next, strB);
 		
 		if (!result) return;
 	}
@@ -46,86 +44,77 @@ private void routineF(StructA structA)
 }
 
 // routineFのサブルーチン
-// addr: Struct_A型のポインタ
-// addrRight: Struct_A型のポインタ
-// addrDown: Struct_B型のポインタ
-private unsafe bool routineA(StructA structA, uint addrRight, uint addrDown)
+private unsafe bool routineA(StructA current, StructA next, StructB strB)
 {
 	// 実行済みフラグ
-	if (structA.FlagRoutineA) return false;
+	if (current.FlagRoutineA) return false;
 	
-	var height = structA.Bottom - structA.Top + 1;
+	var height = current.Bottom - current.Top + 1;
 	if (height < 7) return false;
 
 	// ([addr], y) ~ ([addr+2], y)を0x03(=壁)で埋める
-	var y = structA.Top + this.GetRand(height - 6) + 3;
-	for (int x = structA.Left; x <= structA.Right; x++) {
+	var y = current.Top + this.GetRand(height - 6) + 3;
+	for (int x = current.Left; x <= current.Right; x++) {
 		floorMap[x, y] = 3;
 	}
 
-	_buffer[addrRight + 0] = _buffer[addr];     // 左端は据え置き
-	_buffer[addrRight + 1] = y + 1;					// 上端が下がる
-	_buffer[addrRight + 2] = _buffer[addr + 2]; // 右端は据え置き
-	_buffer[addrRight + 3] = _buffer[addr + 3]; // 下端は据え置き
-	_buffer[addrRight + 4] = 0;
-	_buffer[addrRight + 5] = 0;
+	next.Left = current.Left;
+	next.Top = y + 1;
+	next.Right = current.Right;
+	next.Bottom = current.Bottom;
+	next.FlagRoutineA = false;
+	next.FlagRoutineE = false;
 
-	_buffer[addr + 3] = y - 1;  // 下端は上端-2の位置
-	_buffer[addr + 4] = 1;         // フラグを立てる
+	current.Bottom = y - 1;
+	current.FlagRoutineA = true;
 
-	_buffer[addrDown + 0] = _buffer[addr];     // 左端
-	_buffer[addrDown + 1] = y;              // 上端
-	_buffer[addrDown + 2] = _buffer[addr + 2]; // 右端
-	_buffer[addrDown + 3] = y;              // 下端
-	// addrDown + 4 ~ 7にaddr、+8 ~ +11にaddrRightを格納
-	fixed (byte* ptr = &_buffer[addrDown])
-	{
-		((int*)ptr)[1] = (int)addr;
-		((int*)ptr)[2] = (int)addrRight;
-	}
-	_buffer[addrDown + 12] = 1;
+	strB.Left = current.Left;
+	strB.Top = y;
+	strB.Right = current.Right;
+	strB.Bottom = y;
+
+	strB.structA1 = current;
+	strB.structA2 = next;
+	strB.flag = 1;
 
 	return true;
 }
 
 // routineFのサブルーチン
-// だいたいAと同じ処理で、ちょこっとだけ違う
-private unsafe bool routineE(uint addr, uint addrRight, uint addrDown)
+// X軸方向の処理
+private unsafe bool routineE(StructA current, StructA next, StructB strB)
 {
 	// 実行済みフラグ
-	if (_buffer[addr + 5] != 0)
+	if (current.FlagRoutineE) return false;
+
+	var width = current.Right - current.Left + 1;
+	if (width < 7)
 		return false;
 
-	var temp = _buffer[addr + 2] - _buffer[addr] + 1;
-	if (temp < 7)
-		return false;
-
-	var x = _buffer[addr] + this.GetRand(num - 7 + 1) + 3;
+	var x = current.Left + this.GetRand(width - 7 + 1) + 3;
 	// (x, [addr+1]) ~ (x, [addr+3])を0x03(=壁)で埋める
-	for (int y = _buffer[addr + 1]; y <= _buffer[addr + 3]; y++)
-		_buffer[792 + x + (y * 16)] = 3;
-	
-	_buffer[addrRight + 0] = x + 1;
-	_buffer[addrRight + 1] = _buffer[addr + 1];
-	_buffer[addrRight + 2] = _buffer[addr + 2];
-	_buffer[addrRight + 3] = _buffer[addr + 3];
-	_buffer[addrRight + 4] = 0;
-	_buffer[addrRight + 5] = 0;
-
-	_buffer[addr + 2] = x - 1;
-	_buffer[addr + 5] = 1;
-	
-	_buffer[addrDown + 0] = x;
-	_buffer[addrDown + 1] = _buffer[addr + 1];
-	_buffer[addrDown + 2] = x;
-	_buffer[addrDown + 3] = _buffer[addr + 3];
-	// value2 + 4 ~ 7にaddr、+8 ~ +11にvalue1を格納
-	fixed (byte* ptr = &_buffer[addrDown])
-	{
-		((int*)ptr)[1] = (int)addr;
-		((int*)ptr)[2] = (int)addrRight;
+	for (int y = current.Top; y <= current.Bottom; y++) {
+		floorMap[x, y] = 3;
 	}
-	_buffer[addrDown + 12] = 2;
+	
+	next.Left = x + 1;
+	next.Top = current.Top;
+	next.Right = current.Right;
+	next.Bottom = current.Bottom;
+	next.FlagRoutineA = false;
+	next.FlagRoutineE = false;
+
+	current.Right = x - 1;
+	current.FlagRoutineE = true;
+	
+	strB.Left = x;
+	strB.Top = current.Top;
+	strB.Right = x;
+	strB.Bottom = current.Bottom;
+	strB.structA1 = current;
+	strB.structA2 = next;
+
+	strB.flag = 2;
 
 	return true;
 }
@@ -133,21 +122,14 @@ private unsafe bool routineE(uint addr, uint addrRight, uint addrDown)
 
 // routineFのサブルーチン
 // 中でroutineFが呼び出されている
-private void routineB(uint addr)
+private void routineB(StructA current, int index)
 {
-	// 今見ている「何」のインデックス？
-	int cur = (int)_buffer[21];
-
-	_buffer[21] += 1;
-	_buffer[22] += 1;
-
-	// 乱数でどちらを先に処理するかが変わる
-	if ((this.GenerateRandom() & 1U) != 0U) {
-		this.routineF(addr); // A or Eの残り一方を処理する
-		this.routineF((uint)(cur * 12 + 24)); // 『次』に移る
+	if ((this.GetRand() & 1U) != 0U) {
+		this.routineF(addr, index + 1);
+		this.routineF(structAs[index], index + 1);
 	} else {
-		this.routineF((uint)(cur * 12 + 24));
-		this.routineF(addr);
+		this.routineF(structAs[index], index + 1);
+		this.routineF(addr, index + 1);
 	}
 }
 

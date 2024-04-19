@@ -20,7 +20,7 @@ private unsafe void GenerateFloorMap(uint addr)
 	int value4;
 	int value5;
 	int num3;
-	if (flag)
+	if (!flag)
 	{
 		value3 = (int)(_buffer[addr + 3] - _buffer[num + 3]);
 		value4 = (int)(_buffer[num] - _buffer[addr]);
