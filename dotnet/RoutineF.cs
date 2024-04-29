@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -49,7 +50,7 @@ namespace DQ9TreasureMap
             Next(ref seed, floorInfo, index);
         }
 
-        private static unsafe bool ProcessVertical(ref uint seed, byte[] floorInfo, int idx, int idxA, int idxB)
+        private static bool ProcessVertical(ref uint seed, byte[] floorInfo, int idx, int idxA, int idxB)
         {
             var current = floorInfo.StructA(idx);
             if (current[4] != 0) return false;
@@ -78,17 +79,17 @@ namespace DQ9TreasureMap
             strA[5] = 0;
             current[3] = (byte)(y - 1);
             current[4] = 1;
-            fixed (byte* ptr = strB)
-            {
-                ((int*)ptr)[1] = 24 + idx * 12;
-                ((int*)ptr)[2] = 24 + idxA * 12;
-            }
+
+            var ptr = MemoryMarshal.Cast<byte, int>(strB);
+            ptr[1] = 24 + idx * 12;
+            ptr[2] = 24 + idxA * 12;
+
             strB[12] = 1;
 
             return true;
         }
 
-        private static unsafe bool ProcessHorizontal(ref uint seed, byte[] floorInfo, int idx, int idxA, int idxB)
+        private static bool ProcessHorizontal(ref uint seed, byte[] floorInfo, int idx, int idxA, int idxB)
         {
             var current = floorInfo.StructA(idx);
             if (current[5] != 0) return false;
@@ -117,11 +118,11 @@ namespace DQ9TreasureMap
             strA[5] = 0;
             current[2] = (byte)(x - 1);
             current[5] = 1;
-            fixed (byte* ptr = strB)
-            {
-                ((int*)ptr)[1] = 24 + idx * 12;
-                ((int*)ptr)[2] = 24 + idxA * 12;
-            }
+
+            var ptr = MemoryMarshal.Cast<byte, int>(strB);
+            ptr[1] = 24 + idx * 12;
+            ptr[2] = 24 + idxA * 12;
+
             strB[12] = 2;
             return true;
         }

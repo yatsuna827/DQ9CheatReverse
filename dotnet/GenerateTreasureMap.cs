@@ -6,7 +6,50 @@ using static DQ9TreasureMap.TreasureMapDataTable;
 
 namespace DQ9TreasureMap
 {
-    class GenerateTreasureMap
+    enum MapType
+    {
+        洞窟 = 0,
+        遺跡 = 1,
+        氷 = 2,
+        水 = 3,
+        火山 = 4
+    }
+
+    class TreasureMap
+    {
+        public ushort Seed { get; }
+        public ushort MapRank { get; }
+
+        public MapType MapType { get; }
+        public byte TotalFloors { get; }
+
+        public byte BaseRank { get; }
+
+        public string Boss { get; }
+
+        public string Name { get; }
+        public byte Level { get; }
+
+        public TreasureMap(ushort seed, ushort mapRank, MapType mapType, byte totalFloors, byte baseRank, string boss, string name, byte level)
+        {
+            Seed = seed;
+            MapRank = mapRank;
+
+            MapType = mapType;
+            TotalFloors = totalFloors;
+            BaseRank = baseRank;
+            Boss = boss;
+            Name = name;
+            Level = level;
+        }
+
+        public override string ToString()
+        {
+            return $"{Name} {MapType} Lv.{Level} {TotalFloors}F {BaseRank} {Boss}";
+        }
+    }
+
+    static class GenerateTreasureMap
     {
         // 16階層分のフロアデータ
         // 0: 階層番号
@@ -42,124 +85,266 @@ namespace DQ9TreasureMap
         // - 792から256(=16*16)byteぶん確保されている
         // - デフォルトは01で埋められる
 
-        public static byte[] CalculateDetail(uint mapSeed, uint mapRank)
+        public static TreasureMap Get(ushort mapSeed, ushort mapRank)
         {
-            var seed = mapSeed;
-            var _details = new byte[20];
+            var seed = (uint)mapSeed;
 
             for (int j = 0; j < 12; j++)
                 _ = seed.GetRand(100);
 
             // マップタイプID(1-o(ry)
-            _details[3] = (byte)Seek1(ref seed, TableA);
+            var mapType = seed.GenerateMapType();
             // フロア数(0-oriented?)
-            _details[1] = (byte)Seek2(ref seed, TableB, mapRank);
+            var totalFloors = (byte)seed.GenerateTotalFloors(mapRank);
             // 敵ランク
-            _details[2] = (byte)Seek2(ref seed, TableC, mapRank);
+            var rank = (byte)seed.GenerateEnemyRank(mapRank);
             // ボスID（1-oritented注意）
-            _details[0] = (byte)Seek4(ref seed, mapRank, TableD, TableE); 
+            var bossId = (byte)seed.GenerateBossId(mapRank);
 
             // 用途不明
             // どうも宝箱ランクの決定と同じテーブルを見ているようだが…？
-            _details[8] = (byte)seed.GetRand(1, 2);
-            _details[9] = (byte)seed.GetRand(1, 2);
-            _details[10] = (byte)seed.GetRand(1, 3);
-            _details[11] = (byte)seed.GetRand(1, 4);
-            _details[12] = (byte)seed.GetRand(2, 5);
-            _details[13] = (byte)seed.GetRand(2, 6);
-            _details[14] = (byte)seed.GetRand(3, 7);
-            _details[15] = (byte)seed.GetRand(3, 8);
-            _details[16] = (byte)seed.GetRand(4, 9);
-            _details[17] = (byte)seed.GetRand(5, 9);
-            _details[18] = (byte)seed.GetRand(1, 10);
-            _details[19] = (byte)seed.GetRand(4, 10);
+            {
+                seed.GetRand(1, 2);
+                seed.GetRand(1, 2);
+                seed.GetRand(1, 3);
+                seed.GetRand(1, 4);
+                seed.GetRand(2, 5);
+                seed.GetRand(2, 6);
+                seed.GetRand(3, 7);
+                seed.GetRand(3, 8);
+                seed.GetRand(4, 9);
+                seed.GetRand(5, 9);
+                seed.GetRand(1, 10);
+                seed.GetRand(4, 10);
+            }
 
-            // 5: 地図名1 のIndex
-            // 6: 地図名2 のIndex
-            // 7: 地図名3 のIndex
-            _details[5] = (byte)Seek2(ref seed, TableH, _details[2]);
-            _details[6] = (byte)Seek2(ref seed, TableI, _details[0]);
-            _details[7] = (byte)Seek2(ref seed, TableG, _details[1]);
+            var name1 = seed.GenerateMapName1(rank);
+            var name2 = seed.GenerateMapName2(bossId);
+            var name3 = seed.GenerateMapName3(totalFloors, mapType);
 
             // 地図レベル
-            var treasureMapLevel = ((_details[0] + _details[1] + _details[2] - 4) * 3 + (int)seed.GetRand(11) - 5).Clamp(1, 99);
-            _details[4] = (byte)treasureMapLevel;
+            var treasureMapLevel = (byte)((bossId + totalFloors + rank - 3) * 3 + (int)seed.GetRand(11) - 5).Clamp(1, 99);
 
-            return _details;
+            return new TreasureMap(mapSeed, mapRank, mapType, totalFloors, rank, BossTable[bossId], $"{name1}{name2}の{name3}", treasureMapLevel);
         }
 
-        // テーブルを前から走査していって、和がrを超えない最大の項を返す
-        //   要するにエンカウントテーブルみたいな感じの構造体
-        // 引数にはTableAが渡されてきていて、size=5らしい
-        private static uint Seek1(ref uint seed, byte[] table)
+        public static TreasureMap Generate(ushort timer0, ushort rankBase)
         {
-            var r = seed.GetRand(100u);
+            var seed = timer0 - 0x802u;
 
-            var n = 0u;
-            for (int i = 0; i < table.Length; i+=4)
+            var rand = seed.GetRand();
+            int nextRank = (int)(rankBase + (rand % (uint)(rankBase / 10 * 2 + 1)) - (rankBase / 10)).Clamp(1, 248);
+            Console.WriteLine($"MapRank: {nextRank:X2}");
+
+            var mapSeed = seed.GetRand() & 0x7FFFu;
+            Console.WriteLine($"MapSeed:{mapSeed:X4}");
+            var location = seed.GetRand(1, 150);
+            Console.WriteLine($"Location: {location:X}");
+
+            return Get((ushort)mapSeed, (ushort)(nextRank));
+        }
+
+        public static string GenerateMetadata(uint seed, ushort rankBase)
+        {
+            var mapRank = (uint)(rankBase + seed.GetRand((uint)(rankBase / 10 * 2 + 1)) - (rankBase / 10)).Clamp(1, 248);
+
+            var mapSeed = seed.GetRand() & 0x7FFFu;
+
+            var location = seed.GetRand(1, 150);
+
+            seed = mapSeed * 0xC8333031u + 0x69ACC4C4u;
+
+            // マップタイプID(1-o(ry)
+            var mapType = seed.GenerateMapType();
+            // フロア数(0-oriented?)
+            var totalFloors = (byte)seed.GenerateTotalFloors(mapRank);
+            // 敵ランク
+            var rank = (byte)seed.GenerateEnemyRank(mapRank);
+            // ボスID（1-oritented注意）
+            var bossId = (byte)seed.GenerateBossId(mapRank);
+
+            // 用途不明
+            seed = seed * 0xC8333031u + 0x69ACC4C4u;
+
+            var name1 = seed.GenerateMapName1(rank);
+            var name2 = seed.GenerateMapName2(bossId);
+            var name3 = seed.GenerateMapName3(totalFloors, mapType);
+
+            // 地図レベル
+            var treasureMapLevel = (byte)((bossId + totalFloors + rank - 3) * 3 + (int)seed.GetRand(11) - 5).Clamp(1, 99);
+
+            return $"{name1}{name2}の{name3} Lv.{treasureMapLevel} {location:X2}";
+        }
+
+
+        private static MapType GenerateMapType(ref this uint seed)
+        {
+            var r = seed.GetRand(100);
+            if (r < 30) return MapType.洞窟; // 土
+            if (r < 70) return MapType.遺跡; // 遺跡
+            if (r < 80) return MapType.氷; // 氷
+            if (r < 90) return MapType.水; // 水
+            return MapType.火山; // 火山
+        }
+
+        private static uint GenerateTotalFloors(ref this uint seed, uint mapRank)
+        {
+            if (mapRank < 56) return seed.GetRand(2, 4);
+            if (mapRank < 76) return seed.GetRand(4, 6);
+            if (mapRank < 101) return seed.GetRand(6, 10);
+            if (mapRank < 121) return seed.GetRand(8, 12);
+            if (mapRank < 141) return seed.GetRand(10, 14);
+            if (mapRank < 181) return seed.GetRand(10, 16);
+            if (mapRank < 201) return seed.GetRand(11, 16);
+            if (mapRank < 221) return seed.GetRand(12, 16);
+            return seed.GetRand(14, 16);
+        }
+
+        private static uint GenerateEnemyRank(ref this uint seed, uint mapRank)
+        {
+            if (mapRank < 56) return seed.GetRand(1, 3);
+            if (mapRank < 76) return seed.GetRand(2, 4);
+            if (mapRank < 101) return seed.GetRand(3, 5);
+            if (mapRank < 121) return seed.GetRand(4, 6);
+            if (mapRank < 141) return seed.GetRand(4, 6);
+            if (mapRank < 181) return seed.GetRand(5, 7);
+            if (mapRank < 201) return seed.GetRand(6, 9);
+            if (mapRank < 221) return seed.GetRand(8, 9);
+
+            seed.Advance(); // ここだけはmin==maxでもseedが進む
+            return 9; // 固定値
+        }
+
+        private static uint GenerateBossId(ref this uint seed, uint mapRank)
+        {
+            (int, int) f()
             {
-                n += table[i + 1];
-                if (r < n) return table[i];
+                if (mapRank < 61) return (0, 2);
+                if (mapRank < 81) return (1, 4);
+                if (mapRank < 101) return (2, 6);
+                if (mapRank < 121) return (3, 6);
+                if (mapRank < 141) return (4, 8);
+                if (mapRank < 161) return (5, 8);
+                if (mapRank < 181) return (6, 9);
+                if (mapRank < 201) return (7, 11);
+                return (0, 11);
             }
 
-            return 0u;
-        }
+            var (l, r) = f();
 
-        // tableは4個ずつ1まとまりのデータが並んでいる
-        // valueがt[0]~t[1]の範囲ならt[2]~t[3]の乱数を発生させる、ということらしい
-        // そういうことするなよ…という気持ち
-        private static uint Seek2(ref uint seed, byte[] table, uint value)
-        {
-            for (int i = 0; i < table.Length; i += 4)
+            var nums = new uint[12] { 100, 100, 75, 75, 50, 50, 30, 20, 20, 20, 10, 10 };
+
+            // num[l] ~ num[r]
+            var span = nums.Skip(l).Take(r - l + 1).ToArray();
+            var rand = seed.GetRand((uint)span.Sum(_ => _));
+
+            for (int i = 0; i < span.Length; i++)
             {
-                if (value >= table[i] && value <= table[i + 1])
-                {
-                    var (min, max) = (table[i + 2], table[i + 3]);
-                    return seed.GetRand(min, max);
-                }
+                if (rand < span[i]) return (uint)(l + i);
+
+                rand -= span[i];
             }
 
-            return 0u;
+            throw new Exception("Never");
         }
 
-        // なにこれ…。
-        // たぶんデータ構造がカスなせいでゴミみたいなコードを書いている
-        private static uint Seek4(ref uint seed, uint mapRank, byte[] table1, byte[] table2)
+        public static string[] BossTable = [
+            "黒竜丸", "ハヌマーン", "スライムジェネラル",
+            "Sキラーマシン", "イデアラゴン", "ブラッドナイト",
+            "アトラス", "怪力軍曹イボイノス", "邪眼皇帝アウルート", "魔剣神レパルド", "破壊神フォロボス", "グレイナル"
+        ];
+
+        private static string GenerateMapName1(ref this uint seed, uint enemyRank)
         {
-            for (int i = 0; i < table1.Length; i += 4)
+            var table = new string[]
             {
-                if (mapRank >= table1[i] && mapRank <= table1[i + 1])
-                {
-                    var (min, max) = (table1[i + 2], table1[i + 3]);
+                "はかなき",
+                "ちいさな",
+                "うす暗き",
+                "ゆらめく",
+                "ざわめく",
+                "ねむれる",
 
-                    var n = 0u;
-                    for (int k = min; k <= max; k++)
-                        n += table2[(k - 1) * 2 + 1];
+                "怒れる",
+                "呪われし",
 
-                    var r = seed.GetRand(n);
+                "放たれし",
+                "けだかき",
+                "わななく",
+                "残された",
+                "見えざる",
+                "あらぶる",
+                "とどろく",
+                "大いなる"
+            };
 
-                    var m = 0u;
-                    for (uint k = min; k <= max; k++)
-                    {
-                        m += table2[(k - 1) * 2 + 1];
-                        if (r < m) return k;
-                    }
-                    break;
-                }
-            }
+            if (enemyRank < 3) return table[0 + seed.GetRand(5)];
+            if (enemyRank < 5) return table[3 + seed.GetRand(5)];
+            if (enemyRank < 7) return table[6 + seed.GetRand(6)];
+            if (enemyRank < 9) return table[6 + seed.GetRand(10)];
+            return table[11 + seed.GetRand(5)];
+        }
 
-            return 0u;
+        private static string GenerateMapName2(ref this uint seed, uint bossId)
+        {
+            var table = new[]
+            {
+                "花", "岩", "風",
+                "空", "獣", "夢",
+                "影", "大地", "運命",
+                "魂", "闇", "光",
+                "魔神", "星々", "悪霊", "神々"
+            };
+
+            // 黒竜丸, ハヌマーン, スライムジェネラル
+            if (bossId < 3) return table[0 + seed.GetRand(6)]; // 花,岩,風,空,獣,夢
+
+            // Sキラーマシン, イデアラゴン, ブラッドナイト
+            if (bossId < 6) return table[3 + seed.GetRand(6)]; // 空,獣,夢, 影, 大地, 運命
+
+            // アトラス, イボイノス, アウルート
+            if (bossId < 9) return table[6 + seed.GetRand(6)]; // 影, 大地, 運命, 魂, 闇, 光
+
+            // レパルド, フォロボス, グレイナル
+            return table[9 + seed.GetRand(7)]; // 魂, 闇, 光, 魔人, 星々, 悪霊, 神々
+        }
+
+        private static string GenerateMapName3(ref this uint seed, uint totalFloors, MapType mapType)
+        {
+            var masterTable = new string[][]
+            {
+                // 自然タイプ
+                ["洞くつ", "坑道", "アジト", "道", "墓場", "巣", "世界", "奈落"],
+                // 遺跡タイプ
+                ["地下道", "坑道", "アジト", "道", "墓場", "遺跡", "世界", "迷宮"],
+                // 氷タイプ
+                ["洞くつ", "雪道", "氷穴", "雪原", "墓場", "凍土", "世界", "氷河"],
+                // 水タイプ
+                ["洞くつ", "沼地", "地底湖", "湿原", "墓場", "水脈", "世界", "眠る地"],
+                // 火山タイプ
+                ["洞くつ", "坑道", "火口", "牢ごく", "墓場", "巣", "世界", "じごく"],
+            };
+            var table = masterTable[(int)mapType];
+
+            if (totalFloors < 4) return table[0 + seed.GetRand(2)];
+            if (totalFloors < 6) return table[0 + seed.GetRand(3)];
+            if (totalFloors < 8) return table[0 + seed.GetRand(4)];
+            if (totalFloors < 10) return table[1 + seed.GetRand(4)];
+            if (totalFloors < 12) return table[1 + seed.GetRand(5)];
+            if (totalFloors < 14) return table[2 + seed.GetRand(5)];
+            if (totalFloors < 16) return table[3 + seed.GetRand(5)];
+            return table[5 + seed.GetRand(3)];
         }
 
 
-        public static byte[][] CreateDungeonDetails(uint mapSeed, int totalFloors, int rank, int mapType)
+        public static byte[][] CreateDungeonDetails(this TreasureMap treasureMap)
         {
             var _dungeonInfo = new byte[16][];
             for (int i = 0; i < 16; i++) _dungeonInfo[i] = new byte[1336];
 
-            for (int f = 0; f < totalFloors; f++)
+            for (int f = 1; f <= treasureMap.TotalFloors; f++)
             {
-                CreateDungeonDetails(mapSeed, f, rank, mapType, _dungeonInfo[f]);
+                CreateDungeonDetails(treasureMap.Seed, f, treasureMap.BaseRank, treasureMap.MapType, _dungeonInfo[f-1]);
             }
 
             // 宝箱があるのは3階以降
@@ -168,16 +353,15 @@ namespace DQ9TreasureMap
             return _dungeonInfo;
         }
 
-        public static void CreateDungeonDetails(uint mapSeed, int floor, int rank, int mapType, byte[] floorInfo)
+        private static void CreateDungeonDetails(uint mapSeed, int floor, int rank, MapType mapType, byte[] floorInfo)
         {
-            // floor は 0-indexed なので+1して1-indexedの階層に直す
-            var floorNumber = (uint)floor + 1u;
+            var floorNumber = (uint)floor;
             var seed = mapSeed + floorNumber;
 
             var floorSize =
-                floor < 4 ? (seed % 5) + 10 :
-                floor < 8 ? (seed % 4) + 12 :
-                floor < 12 ? (seed % 3) + 14 : 16;
+                floor <= 4 ? (seed % 5) + 10 :
+                floor <= 8 ? (seed % 4) + 12 :
+                floor <= 12 ? (seed % 3) + 14 : 16;
 
             floorInfo[0] = (byte)floorNumber;
             floorInfo[1] = 0;
@@ -226,27 +410,30 @@ namespace DQ9TreasureMap
 
             RoutineJ.Execute(ref seed, floorInfo);
 
-            // 宝箱
-            if (floorInfo[0] <= 2)
-            {
-                floorInfo[8] = 0;
-            }
-            else
-            {
-                RoutineK.Execute(ref seed, floorInfo);
-            }
+            // 宝箱の配置決定
+            var boxes = floorInfo[0] >= 3 ? (byte)(seed.GetRand(3) + 1) : (byte)0;
+            floorInfo[8] = boxes;
+            PlaceTreasureBox.Execute(ref seed, floorInfo, boxes);
 
-            RoutineZ.Execute(floorInfo, floor, rank, mapType);
+            // 諸々をメモリにロードする
+            // シンボル出現テーブルの処理もこの中
+            var enemyTable = RoutineZ.Execute(floorInfo, floor, rank, mapType);
+
+            //Console.WriteLine($"{floor}F");
+            foreach(var idx  in enemyTable)
+            {
+                //Console.WriteLine(Monsters[idx]);
+            }
+            //Console.WriteLine();
         }
 
 
         private static void GenerateTreasureBoxRank(uint mapSeed, int floor, uint baseRank, byte[,] _dungeonInfo)
         {
-            var floorNumber = (uint)floor + 1u;
-            var seed = mapSeed + floorNumber;
+            var seed = mapSeed + (uint)floor;
             // ランク 4階ごとに+1されていくらしい
             // 1-indexedなので-1する
-            var rank = baseRank + floor / 4 - 1;
+            var rank = baseRank + (floor - 1) / 4 - 1;
 
             // 宝箱の数*2回 乱数を進める
             seed.Advance(_dungeonInfo[floor, 8] * 2u);

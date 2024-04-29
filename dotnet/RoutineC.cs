@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -8,7 +9,7 @@ namespace DQ9TreasureMap
 {
     static class RoutineC
     {
-        public static unsafe bool Execute(ref uint seed, byte[] floorInfo, int idxA, int idxC)
+        public static bool Execute(ref uint seed, byte[] floorInfo, int idxA, int idxC)
         {
             var strA = floorInfo.StructA(idxA);
             var strC = floorInfo.StructC(idxC);
@@ -35,10 +36,7 @@ namespace DQ9TreasureMap
             strC[3] = (byte)bottom;
             strC[4..].Fill(0);
 
-            fixed (byte* ptr = &strA[8])
-            {
-                *(int*)ptr = 472 + idxC * 20;
-            }
+            MemoryMarshal.Cast<byte, int>(strA[8..])[0] = 472 + idxC * 20;
 
             for (var y = (int)top; y <= bottom; y++)
                 for (var x = (int)left; x <= right; x++)
